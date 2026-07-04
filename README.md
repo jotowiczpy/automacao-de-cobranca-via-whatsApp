@@ -148,18 +148,6 @@ ou
 <img src="assets/demo.gif" width="900">
 </p>
 ```
----
-## 🚧 Melhorias futuras
-
-* Interface gráfica
-* Dashboard de acompanhamento
-* Logs de execução
-* Integração com banco de dados
-* Arquivo `.env` para configurações
-* Agendamento automático de execuções
-* Envio de boletos em PDF
-* Integração com API oficial do WhatsApp
----
 ## ⚠️ Aviso
 
 Este projeto foi desenvolvido para automatizar processos internos de cobrança.
