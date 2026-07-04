@@ -1,0 +1,118 @@
+import random
+import pywhatkit as kit
+import pandas as pd
+import pyautogui
+import time
+
+caminho_arquivo = r"clientes_base.xlsm"
+
+# =========================
+# LIMITE DE ENVIOS
+# =========================
+MAX_ENVIOS_POR_EXECUCAO = 40   # não passa disso numa única rodada
+PAUSA_A_CADA = 15              # a cada N envios, faz uma pausa longa
+PAUSA_LONGA_MIN, PAUSA_LONGA_MAX = 180, 300   # 3-5 min
+INTERVALO_MIN, INTERVALO_MAX = 25, 50         # intervalo normal entre envios (seg)
+
+# =========================
+# VARIAÇÕES DE MENSAGEM
+# =========================
+TEMPLATES_MENSAGEM = [
+    lambda nome, valor, data: (
+        f"Olá {nome}, tudo bem?\n\n"
+        f"Verificamos um débito no valor de R$ {valor} "
+        f"com vencimento em {data} no [NOME DA EMPRESA].\n"
+        f"Podemos negociar ou já foi realizado o pagamento?"
+    ),
+    lambda nome, valor, data: (
+        f"Oi {nome}! Passando para avisar que consta um valor em aberto de "
+        f"R$ {valor}, referente à cobrança com vencimento em {data} (NOME DA EMPRESA).\n"
+        f"Se já pagou, pode desconsiderar. Caso contrário, podemos combinar "
+        f"a melhor forma de regularizar."
+    ),
+    lambda nome, valor, data: (
+        f"Olá, {nome}. Identificamos uma pendência de R$ {valor} com "
+        f"vencimento em {data} junto ao [NOME DA EMPRESA].\n"
+        f"Fico à disposição para conversarmos sobre pagamento ou negociação."
+    ),
+    lambda nome, valor, data: (
+        f"{nome}, tudo bem?\n\n"
+        f"Consta em nosso sistema um débito de R$ {valor}, vencido em "
+        f"{data} (NOME DA EMPRESA).\n"
+        f"Me avisa se já foi quitado ou se prefere negociar as condições."
+    ),
+]
+
+
+def montar_mensagem(nome, valor, data):
+    template = random.choice(TEMPLATES_MENSAGEM)
+    return template(nome, valor, data)
+
+
+df = pd.read_excel(caminho_arquivo, sheet_name="cobranca", engine="openpyxl")
+
+envios_realizados = 0
+
+for index, cliente in df.iterrows():
+
+    if envios_realizados >= MAX_ENVIOS_POR_EXECUCAO:
+        print(f"Limite de {MAX_ENVIOS_POR_EXECUCAO} envios por execução atingido. "
+              f"Os demais contatos ficam como 'pendente' para a próxima rodada.")
+        break
+
+    nome = str(cliente["nome"])
+    telefone = str(cliente["telefone"]).split(".")[0].strip()
+    valor = str(cliente["valor"])
+    status = str(cliente["status"])
+
+    if not pd.isna(cliente["data"]):
+        data = pd.to_datetime(cliente["data"], dayfirst=True).strftime("%d/%m/%Y")
+    else:
+        data = ""
+
+    print(f"[DEBUG] Nome: {nome} | Status: '{status}' | Repr: {repr(status)}")
+
+    if status.strip().lower() == "pendente":
+
+        mensagem = montar_mensagem(nome, valor, data)
+
+        try:
+            print(f"Enviando para {nome} ({telefone})...")
+
+            kit.sendwhatmsg_instantly(f"+{telefone}", mensagem, wait_time=20)
+
+            # Aguarda a página carregar completamente
+            time.sleep(10)
+
+            # Verifica se apareceu o aviso de número inválido na tela
+            try:
+                if numero_invalido:
+                    print(f"⚠️  {nome} ({telefone}) NÃO está no WhatsApp!")
+                    df.at[index, "status"] = "sem_whatsapp"
+                else:
+                    print(f"✅ Mensagem enviada para {nome}!")
+                    df.at[index, "status"] = "enviado"
+
+            except pyautogui.ImageNotFoundException:
+                # Imagem não encontrada = número é válido, mensagem enviada
+                print(f"✅ Mensagem enviada para {nome}!")
+                df.at[index, "status"] = "enviado"
+
+            envios_realizados += 1
+
+            # Pausa longa periódica para simular comportamento humano
+            if envios_realizados % PAUSA_A_CADA == 0:
+                pausa_longa = random.randint(PAUSA_LONGA_MIN, PAUSA_LONGA_MAX)
+                print(f"⏸️  Pausa longa de {pausa_longa}s após {envios_realizados} envios...")
+                time.sleep(pausa_longa)
+            else:
+                intervalo = random.randint(INTERVALO_MIN, INTERVALO_MAX)
+                time.sleep(intervalo)
+
+        except Exception as e:
+            print(f"❌ Erro ao enviar para {nome}: {e}")
+            df.at[index, "status"] = "erro"
+
+
+df.to_excel(r"clientes_30_junho.xlsx", index=False)
+print("Processo finalizado!")
